@@ -1,0 +1,9 @@
+### 20240709
+
+完成了 4 个小任务。
+
+任务 3 和 4 都用了并行基数排序的方法实现，但实现的 RadixSort 比 cub::DeviceRadixSort::SortPairs 慢了好多。
+
+### 20240710
+
+加入了 .clang-format
