@@ -1,11 +1,25 @@
 CC = nvcc
 FLAG = -O2
 
-main: main.o matrix.o
-	$(CC) $(FLAG) -o main main.o matrix.o
+main.o: main.cu matrix.cuh
+	$(CC) $(FLAG) -c main.cu
 
-main.o: matrix.cuh main.cu
-	$(CC) $(FLAG) -c main.o main.cu
+matrix-cublas.o: matrix-cublas.cu matrix.cuh
+	$(CC) $(FLAG) -c matrix-cublas.cu
 
-matrix.o: matrix.cuh matrix.cu
-	$(CC) $(FLAG) -c matrix.o matrix.cu
+matrix-v1.o: matrix-v1.cu matrix.cuh
+	$(CC) $(FLAG) -c matrix-v1.cu
+
+matrix-cublas: matrix-cublas.o main.o
+	$(CC) $(FLAG) -o matrix-cublas matrix-cublas.o main.o -lcublas
+	
+matrix-v1: matrix-v1.o main.o
+	$(CC) $(FLAG) -o matrix-v1 matrix-v1.o main.o
+	
+.PHONY:
+clean:
+	rm *.o matrix-v1 matrix-cublas
+
+.PHONY:
+all: matrix-cublas matrix-v1 matrix-cublas
+	
