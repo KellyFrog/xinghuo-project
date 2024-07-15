@@ -1,0 +1,2 @@
+GPU: 32 runs, n = 16777216, dim = 16, total time = 43986.355469ms, arv time = 1374.573608ms
+CPU: 32 runs, n = 16777216, dim = 16, total time = 5580.577637ms, arv time = 174.393051ms

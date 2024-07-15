@@ -3,6 +3,6 @@
 
 #include <cstddef>
 
-__global__ void Accumulate(float*, std::size_t, std::size_t, float*);
+void ReduceSum(unsigned*, std::size_t, std::size_t, unsigned*);
 
 #endif
