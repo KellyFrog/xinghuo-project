@@ -8,28 +8,25 @@ const int B = 4;
 const int T = 8;
 
 typedef unsigned long long uint64_t;
+typedef unsigned __int128 uint128_t;
 typedef unsigned short uint16_t;
 
 __global__ void KGetLowbits(unsigned* d_a, std::size_t n, int shift, int* d_cnt, int* d_suf) {
-	//16 * 4 = 64
 	__shared__ uint64_t cnt[1 << T][2], tmp[1 << T][2];
 	__shared__ uint16_t app[1 << T], a[1 << T];
-	__shared__ int sum;
 	int idx = threadIdx.x;
 	int i = threadIdx.x + blockDim.x * blockIdx.x;
 	cnt[idx][0] = cnt[idx][1] = 0;
 	app[idx] = 0;
-	sum = 0;
 	if(i < n) {
 		int lowbits = d_a[i] >> shift & ((1 << B) - 1);
 		a[idx] = lowbits;
 		cnt[idx][lowbits >> 3] = 1ull << ((lowbits & 7) << 3);
 		app[idx] = 1 << lowbits;
-		//printf("[%d] lowbit = %d\n", idx, lowbits);
 	}
-	__syncthreads();
 	int t = 1 << T;
 
+	__syncthreads();
 	while(t > 1) {
 		t >>= 1;
 		if(t + idx < (1 << T)) {
@@ -41,21 +38,25 @@ __global__ void KGetLowbits(unsigned* d_a, std::size_t n, int shift, int* d_cnt,
 			tmp[idx][1] = cnt[idx][1];
 		}
 		__syncthreads();
-		cnt[idx][0] = tmp[idx][0];
-		cnt[idx][1] = tmp[idx][1];
+		t >>= 1;
+		if(t + idx < (1 << T)) {
+			cnt[idx][0] = tmp[idx][0] + tmp[idx + t][0];
+			cnt[idx][1] = tmp[idx][1] + tmp[idx + t][1];
+			app[idx] |= app[idx + t];
+		} else {
+			cnt[idx][0] = tmp[idx][0];
+			cnt[idx][1] = tmp[idx][1];
+		}
 		__syncthreads();
 	}
-	//if(i < n) printf("[%d] = %llu %llu %u\n", idx, cnt[idx][0], cnt[idx][1], (unsigned)app[idx]);
-	int startpos = blockIdx.x << B;
 	if(idx < (1 << B)) {
+		int startpos = blockIdx.x << B;
 		if(app[0] >> idx & 1) {
-			//printf("get %d in app\n", idx);
 			int x = (cnt[0][idx >> 3] >> ((idx & 7) << 3) & ((1 << T) - 1));
 			if(!x) x = 1 << T;
-			d_cnt[startpos + idx] = x;
-			atomicAdd(&sum, x);
+			d_cnt[startpos | idx] = x;
 		} else {
-			d_cnt[startpos + idx] = 0;
+			d_cnt[startpos | idx] = 0;
 		}
 	}
 	if(i < n) {
@@ -63,18 +64,7 @@ __global__ void KGetLowbits(unsigned* d_a, std::size_t n, int shift, int* d_cnt,
 		int x = cnt[idx][lowbits >> 3] >> ((lowbits & 7) << 3) & ((1 << T) - 1);
 		if(!x) x = 1 << T;
 		d_suf[i] = x;
-		//printf("d_suf[%d] = %d %d\n", i, x, lowbits);
 	}
-	__syncthreads();
-	/*
-	if(idx == 0) {
-		int mi = 1 << T;
-		if(n - i < mi) mi = n - i;
-		if(sum != mi) printf("%d %d\n", sum, mi);
-		assert(sum == mi);
-	}
-	*/
-	//if(d_cnt[startpos + idx]) printf("d_cnt[%d] = %d\n", startpos + idx, d_cnt[startpos + idx]);
 }
 
 __global__ void KReorder(unsigned* d_a, std::size_t n, int shift, int* d_cnt, int* d_prefix, int* d_suf, unsigned* d_b) {
@@ -84,8 +74,6 @@ __global__ void KReorder(unsigned* d_a, std::size_t n, int shift, int* d_cnt, in
 		int lowbits = d_a[i] >> shift & ((1 << B) - 1);
 		int t = d_prefix[lowbits] + d_cnt[startpos | lowbits] - d_suf[i];
 		d_b[t] = d_a[i];
-		//printf("d_b[%d - %d] = d_a[%d] = %u %d\n", d_prefix[lowbits] + d_cnt[startpos | lowbits], d_suf[i], i, d_a[i], lowbits);
-		//printf("d_b[%d] = d_a[%d] = %u %d\n", t, i, d_a[i], lowbits);
 	}
 }
 
@@ -94,9 +82,9 @@ __global__ void KMoveBackwards(int* d_src, std::size_t n, int t, int* d_dst) {
 	int j = threadIdx.y;
 	if(i < n) {
 		if(t <= i) {
-			d_dst[i << 4 | j] = d_src[i << 4 | j] + d_src[(i - t) << 4 | j];
+			d_dst[i << B | j] = d_src[i << B | j] + d_src[(i - t) << B | j];
 		} else {
-			d_dst[i << 4 | j] = d_src[i << 4 | j];
+			d_dst[i << B | j] = d_src[i << B | j];
 		}
 	}
 }
@@ -134,7 +122,6 @@ void MakePrefix(int* &d_cnt, std::size_t n, int* &d_temp) {
 		KMoveBackwards<<<(n + (1 << B)) / (1 << B), dim3((1 << B), (1 << B))>>>(d_cnt, n, t, d_temp);
 		std::swap(d_cnt, d_temp);
 	}
-		//KPrint<<<1, 1>>>(d_cnt, n << B);
 }
 
 void RadixSort(unsigned* d_a, std::size_t n) {
@@ -151,7 +138,6 @@ void RadixSort(unsigned* d_a, std::size_t n) {
 		MakePrefix(d_cnt, t, d_tempCnt);
 		assert(cudaMemcpy(d_prefix, d_cnt + ((t - 1) << B), (1 << B) * sizeof(int), cudaMemcpyDeviceToDevice) == cudaSuccess);
 		KExclusivePrefix<<<1, 1>>>(d_prefix, n);
-		//KPrint<<<1, 1>>>(d_prefix, (1 << B));
 		KReorder<<<t, (1 << T)>>>(d_a, n, shift, d_cnt, d_prefix, d_suf, d_b);
 		std::swap(d_a, d_b);
 	}

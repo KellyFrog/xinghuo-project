@@ -1,0 +1,8 @@
+./sort-cub 10000000 100
+GPU: 100 runs, n = 10000000, total time = 507.147278ms, arv time = 5.071473ms
+./sort-v1 10000000 100
+GPU: 100 runs, n = 10000000, total time = 5268.046875ms, arv time = 52.680470ms
+./sort-v2 10000000 100
+GPU: 100 runs, n = 10000000, total time = 20107.988281ms, arv time = 201.079880ms
+./sort-v3 10000000 100
+GPU: 100 runs, n = 10000000, total time = 2619.240479ms, arv time = 26.192406ms
